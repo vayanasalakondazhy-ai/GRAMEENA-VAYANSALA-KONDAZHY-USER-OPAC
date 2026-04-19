@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Georgia", serif;
+  --breakpoint-xs: 475px;
+  
+  --color-bg-deep: #0A0C10;
+  --color-bg-card: #161B22;
+  --color-border-main: #30363D;
+  --color-text-main: #E6EDF3;
+  --color-text-dim: #8B949E;
+  --color-accent-blue: #58A6FF;
+  --color-success-green: #238636;
+  --color-error-red: #DA3633;
+}
+
+@layer base {
+  body {
+    @apply bg-bg-deep text-text-main antialiased;
+  }
+}
+
+.card-github {
+  @apply bg-bg-card border border-border-main rounded-xl;
+}
+
+.nav-pill {
+  @apply px-4 py-2 rounded-full text-sm font-medium transition-all;
+}
+
+.nav-pill-active {
+  @apply bg-bg-card border border-border-main text-text-main;
+}
+
+.nav-pill-inactive {
+  @apply text-text-dim hover:text-text-main;
+}
+
+.heading-serif {
+  @apply font-serif tracking-wide uppercase;
+}
