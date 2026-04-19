@@ -55,16 +55,15 @@ export default function App() {
             Dashboard
           </button>
           <button 
-            onClick={() => setView('search')}
+            onClick={() => {
+              setView('home');
+              setTimeout(() => {
+                document.getElementById('catalog-anchor')?.scrollIntoView({ behavior: 'smooth' });
+              }, 100);
+            }}
             className={cn("nav-pill", view === 'search' ? "nav-pill-active" : "nav-pill-inactive")}
           >
-            Catalog Search
-          </button>
-          <button 
-            onClick={() => setView('explore')}
-            className={cn("nav-pill", view === 'explore' ? "nav-pill-active" : "nav-pill-inactive")}
-          >
-            Membership
+            Explore Catalog
           </button>
         </div>
       </header>
@@ -106,7 +105,8 @@ export default function App() {
 
 function MemberAccess() {
   const [users, setUsers] = useState<LibUser[]>([]);
-  const [selectedPhone, setSelectedPhone] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [enteredPhone, setEnteredPhone] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -119,20 +119,30 @@ function MemberAccess() {
   }, []);
 
   const handleEntry = async () => {
-    if (!selectedPhone) return toast.error('Please enter or select a mobile number');
+    if (!selectedUserId || !enteredPhone) return toast.error('Please select a member and enter phone number');
+    
+    const targetUser = users.find(u => u.id === selectedUserId);
+    if (!targetUser) return toast.error('Member data error');
+    
+    // Check if phone matches (acting as password)
+    if (targetUser.phone !== enteredPhone) {
+      return toast.error('Incorrect phone number for the selected member');
+    }
+
     setLoading(true);
     try {
-      const { data: userData, error: userError } = await supabase.from('users').select('*').eq('phone', selectedPhone).single();
-      if (userError || !userData) return toast.error('User not found.');
-
-      const { data: existingLog } = await supabase.from('library_logs').select('*').eq('phone', selectedPhone).is('out_time', null).maybeSingle();
+      const { data: existingLog } = await supabase.from('library_logs').select('*').eq('phone', enteredPhone).is('out_time', null).maybeSingle();
       if (existingLog) return toast.error('Already inside!');
 
-      const { error: logError } = await supabase.from('library_logs').insert({ name: userData.name, phone: selectedPhone, in_time: new Date().toISOString() });
+      const { error: logError } = await supabase.from('library_logs').insert({ 
+        name: targetUser.name, 
+        phone: enteredPhone, 
+        in_time: new Date().toISOString() 
+      });
       if (logError) throw logError;
 
-      toast.success(`Welcome, ${userData.name}!`);
-      setSelectedPhone('');
+      toast.success(`Welcome, ${targetUser.name}!`);
+      setEnteredPhone('');
     } catch (err) {
       toast.error('Entry failed');
     } finally {
@@ -141,17 +151,25 @@ function MemberAccess() {
   };
 
   const handleExit = async () => {
-    if (!selectedPhone) return toast.error('Enter mobile number');
+    if (!selectedUserId || !enteredPhone) return toast.error('Select member and enter phone');
+    
+    const targetUser = users.find(u => u.id === selectedUserId);
+    if (!targetUser) return toast.error('Member data error');
+
+    if (targetUser.phone !== enteredPhone) {
+      return toast.error('Incorrect phone number');
+    }
+
     setLoading(true);
     try {
-      const { data: existingLog } = await supabase.from('library_logs').select('*').eq('phone', selectedPhone).is('out_time', null).maybeSingle();
+      const { data: existingLog } = await supabase.from('library_logs').select('*').eq('phone', enteredPhone).is('out_time', null).maybeSingle();
       if (!existingLog) return toast.error('No active entry found.');
 
       const { error: updateError } = await supabase.from('library_logs').update({ out_time: new Date().toISOString() }).eq('id', existingLog.id);
       if (updateError) throw updateError;
 
       toast.success('Exit recorded.');
-      setSelectedPhone('');
+      setEnteredPhone('');
     } catch (err) {
       toast.error('Exit failed');
     } finally {
@@ -165,25 +183,25 @@ function MemberAccess() {
       
       <div className="space-y-4">
         <div className="space-y-2">
-          <label className="text-[12px] text-text-dim">Member Name</label>
+          <label className="text-[12px] text-text-dim">Select Your Name</label>
           <select 
             className="w-full bg-bg-deep border border-border-main rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent-blue"
-            value={selectedPhone}
-            onChange={(e) => setSelectedPhone(e.target.value)}
+            value={selectedUserId}
+            onChange={(e) => setSelectedUserId(e.target.value)}
           >
-            <option value="">Select Registered Member</option>
-            {users.map(u => <option key={u.id} value={u.phone}>{u.name}</option>)}
+            <option value="">Choose Member</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         </div>
 
         <div className="space-y-2">
-          <label className="text-[12px] text-text-dim">Registered Phone</label>
+          <label className="text-[12px] text-text-dim">Verify Phone (Password)</label>
           <input 
-            type="tel"
-            placeholder="+91 XXXXX XXXXX"
+            type="password"
+            placeholder="Enter registered mobile"
             className="w-full bg-bg-deep border border-border-main rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent-blue placeholder:text-slate-700"
-            value={selectedPhone}
-            onChange={(e) => setSelectedPhone(e.target.value)}
+            value={enteredPhone}
+            onChange={(e) => setEnteredPhone(e.target.value)}
           />
         </div>
 
@@ -198,7 +216,7 @@ function MemberAccess() {
           <button 
             disabled={loading}
             onClick={handleExit}
-            className="bg-error-red hover:opacity-90 transition-opacity text-white font-semibold py-2.5 rounded-lg text-sm disabled:opacity-50"
+            className="bg-error-red hover:opacity-90 transition-opacity text-white font-semibold py-3 rounded-lg text-sm disabled:opacity-50"
           >
             LOG OUT
           </button>
@@ -254,6 +272,8 @@ function HomeView() {
         <StatItem value="Connected" label="Supabase System" highlight />
       </div>
 
+      <div id="catalog-anchor" className="scroll-mt-24" />
+
       <div className="grid md:grid-cols-2 gap-6">
         <div className="card-github p-6">
           <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
@@ -278,25 +298,159 @@ function HomeView() {
         <div className="card-github p-6">
            <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
             <SearchIcon className="w-5 h-5 text-accent-blue" />
-            Quick Shortcuts
+            About Library
           </h3>
-          <div className="grid grid-cols-2 gap-3">
-             <div className="bg-bg-deep border border-border-main rounded-lg p-4 text-center hover:border-accent-blue transition-colors cursor-pointer">
-                <span className="text-xs font-bold uppercase tracking-widest text-text-dim">Fiction</span>
-             </div>
-             <div className="bg-bg-deep border border-border-main rounded-lg p-4 text-center hover:border-accent-blue transition-colors cursor-pointer">
-                <span className="text-xs font-bold uppercase tracking-widest text-text-dim">History</span>
-             </div>
-             <div className="bg-bg-deep border border-border-main rounded-lg p-4 text-center hover:border-accent-blue transition-colors cursor-pointer">
-                <span className="text-xs font-bold uppercase tracking-widest text-text-dim">Classic</span>
-             </div>
-             <div className="bg-bg-deep border border-border-main rounded-lg p-4 text-center hover:border-accent-blue transition-colors cursor-pointer">
-                <span className="text-xs font-bold uppercase tracking-widest text-text-dim">Malayalam</span>
+          <div className="text-sm text-text-dim space-y-3">
+             <p>Grameena Vayanasala Kondazhy is a community library dedicated to promoting knowledge and literacy in rural Kerala.</p>
+             <div className="grid grid-cols-2 gap-2 mt-4">
+                <div className="p-3 bg-bg-deep border border-border-main rounded-lg text-center">
+                  <span className="block text-xs font-bold text-accent-blue">A+ GRADE</span>
+                  <span className="text-[10px] uppercase">Rating</span>
+                </div>
+                <div className="p-3 bg-bg-deep border border-border-main rounded-lg text-center">
+                  <span className="block text-xs font-bold text-accent-blue">SINCE 1954</span>
+                  <span className="text-[10px] uppercase">Est.</span>
+                </div>
              </div>
           </div>
         </div>
       </div>
+
+      <div className="pt-8 space-y-4">
+        <h3 className="text-2xl heading-serif font-bold flex items-center gap-3">
+          <Library className="w-6 h-6 text-accent-blue" />
+          Explore Collection
+        </h3>
+        <CatalogExplorer />
+      </div>
     </motion.div>
+  );
+}
+
+function CatalogExplorer() {
+  const [books, setBooks] = useState<Book[]>([]);
+  const [search, setSearch] = useState('');
+  const [type, setType] = useState<'title' | 'author' | 'stocknumber'>('title');
+  const [category, setCategory] = useState('all');
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const pageSize = 12;
+
+  const performFetch = async (isLoadMore = false) => {
+    setLoading(true);
+    const currentPage = isLoadMore ? page + 1 : 0;
+    
+    let q = supabase.from('books').select('*', { count: 'exact' });
+    
+    if (search.trim()) {
+      q = q.ilike(type, `%${search}%`);
+    }
+    
+    if (category !== 'all') {
+      q = q.eq('category', category);
+    }
+
+    const { data, count, error } = await q
+      .order('title')
+      .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
+
+    if (error) {
+      toast.error('Failed to load books');
+    } else {
+      const newBooks = data || [];
+      if (isLoadMore) {
+        setBooks(prev => [...prev, ...newBooks]);
+      } else {
+        setBooks(newBooks);
+      }
+      setPage(currentPage);
+      setHasMore(newBooks.length === pageSize);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      performFetch();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [search, type, category]);
+
+  return (
+    <div className="space-y-6">
+      <div className="card-github p-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="space-y-1.5 md:col-span-2">
+          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wider">Search Catalog</label>
+          <div className="relative">
+            <input 
+              placeholder="Search by title, author, or stock number..."
+              className="w-full bg-bg-deep border border-border-main rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-accent-blue"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <SearchIcon className="absolute left-3.5 top-3 w-4 h-4 text-text-dim" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wider">By Field</label>
+          <select 
+            className="w-full bg-bg-deep border border-border-main rounded-xl px-4 py-2.5 text-sm"
+            value={type}
+            onChange={(e) => setType(e.target.value as any)}
+          >
+            <option value="title">Title</option>
+            <option value="author">Author</option>
+            <option value="stocknumber">Stock Number</option>
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wider">Category Filter</label>
+          <select 
+            className="w-full bg-bg-deep border border-border-main rounded-xl px-4 py-2.5 text-sm"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            <option value="all">All Categories</option>
+            <option value="Fiction">Fiction</option>
+            <option value="History">History</option>
+            <option value="Literature">Literature</option>
+            <option value="Classic">Classic</option>
+            <option value="Poetry">Poetry</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {books.map((book) => (
+          <BookGridCard key={book.id} book={book} />
+        ))}
+      </div>
+
+      {loading && (
+        <div className="flex justify-center p-8">
+          <Loader2 className="w-6 h-6 animate-spin text-accent-blue" />
+        </div>
+      )}
+
+      {hasMore && !loading && (
+        <div className="flex justify-center pt-4 pb-12">
+          <button 
+            onClick={() => performFetch(true)}
+            className="px-8 py-3 bg-bg-card border border-border-main rounded-full text-sm font-semibold hover:border-accent-blue transition-all flex items-center gap-2"
+          >
+            Load More Books
+            <ChevronRight className="w-4 h-4 rotate-90" />
+          </button>
+        </div>
+      )}
+      
+      {!hasMore && books.length > 0 && (
+        <div className="text-center py-8 text-sm text-text-dim">
+          Reached end of collection.
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -310,105 +464,26 @@ function StatItem({ value, label, highlight }: { value: string; label: string; h
 }
 
 function SearchView() {
-  const [query, setQuery] = useState('');
-  const [type, setType] = useState<'title' | 'author' | 'stocknumber'>('title');
-  const [results, setResults] = useState<Book[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      if (query.trim().length > 1) performSearch();
-      else setResults([]);
-    }, 500);
-    return () => clearTimeout(delayDebounceFn);
-  }, [query, type]);
-
-  async function performSearch() {
-    setLoading(true);
-    const { data } = await supabase.from('books').select('*').ilike(type, `%${query}%`).limit(12);
-    setResults(data || []);
-    setLoading(false);
-  }
-
   return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="space-y-6"
-    >
-      <div className="card-github p-4 flex gap-4">
-        <select 
-          className="bg-bg-deep border border-border-main rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/20"
-          value={type}
-          onChange={(e) => setType(e.target.value as any)}
-        >
-          <option value="title">Title</option>
-          <option value="author">Author</option>
-          <option value="stocknumber">Stock No.</option>
-        </select>
-        <div className="relative flex-1">
-          <input 
-            placeholder={`Search for books by ${type}...`}
-            className="w-full bg-bg-deep border border-border-main rounded-full pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/50"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <SearchIcon className="absolute left-4 top-3.5 w-4 h-4 text-text-dim" />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {results.map((book) => <BookCard key={book.id} book={book} />)}
-      </div>
-    </motion.div>
+    <div className="card-github p-12 text-center space-y-4">
+       <Library className="w-12 h-12 text-accent-blue mx-auto opacity-50" />
+       <h2 className="text-2xl font-bold">Integrated Catalog</h2>
+       <p className="text-text-dim">The catalog is now integrated directly into the dashboard for a smoother experience. Scroll down on the Dashboard to browse all books.</p>
+       <button 
+        onClick={() => {
+           const element = document.getElementById('catalog-anchor');
+           element?.scrollIntoView({ behavior: 'smooth' });
+        }}
+        className="nav-pill nav-pill-active inline-flex"
+       >
+         Go to Collection
+       </button>
+    </div>
   );
 }
 
 function ExploreView() {
-  const [books, setBooks] = useState<Book[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [filter, setFilter] = useState('all');
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  useEffect(() => { fetchBooks(); }, [filter, search]);
-
-  async function fetchBooks() {
-    setLoading(true);
-    let q = supabase.from('books').select('*');
-    if (filter !== 'all') q = q.eq('category', filter);
-    if (search) q = q.ilike('title', `%${search}%`);
-    const { data } = await q.order('title').limit(12);
-    setBooks(data || []);
-    setLoading(false);
-  }
-
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-3">
-        <select 
-          className="bg-bg-card border border-border-main rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/20"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        >
-          <option value="all">Categories: All</option>
-          <option value="Fiction">Fiction</option>
-          <option value="History">History</option>
-          <option value="Literature">Literature</option>
-        </select>
-        <input 
-          placeholder="Quick focus filter..."
-          className="flex-1 bg-bg-card border border-border-main rounded-lg px-4 py-2 text-sm"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {books.map((book) => <BookGridCard key={book.id} book={book} />)}
-      </div>
-    </motion.div>
-  );
+  return <SearchView />;
 }
 
 const BookCard: React.FC<{ book: Book }> = ({ book }) => {
